@@ -106,5 +106,53 @@ class QdrantDB:
         logging.success("Query completed!")               
         return [self._get_search_result_from_scored_point(t) for t in result]
     
-    async def insertVector(self, vector: list[TextData]):
-        logging.info("Inserting {} vectors inrto Qdrant....", len(vector))
+    async def insertVector(self, vectors: list[TextData]):
+        logging.info("Inserting {} vectors inrto Qdrant....", len(vectors))
+        points = [self._get_point_from_text(t) for t in vectors]
+        result = await self._qd.upsert(collection_name = self.collection_name,
+                                       wait=True,
+                                       points=points)
+        logging.info("Insert completelly: {}", result.status)
+
+    async def deleteVector(self, ids: list[str]):
+        logging.info("Deleting {} from Qdrant....", len(ids))
+        result = await self._qd.delete(collection_name=self.collection_name,
+                                       points_selector=models.PointIdsList(points=ids))
+        logging.info("Delete completely: {}", result.status)
+
+    async def updateVector(self, new_points: list[TextData]):
+        result = await self._qd.update_vectors(collection_name=self.collection_name,
+                                               points=[self._get_vector_from_txt(t) for t in new_points])
+        logging.info("Update Vector successfully: {}", result.status)
+
+    async def scroll_points(self,
+                            from_id: str,
+                            count=20,
+                            with_vectors=False) -> tuple[list[TextData], str]:
+        result, next_id = await self._client.scroll(collection_name=self.collection_name,
+                                                  limit=count,
+                                                  offset=from_id,
+                                                  with_vectors=with_vectors
+                                                  )
+
+        return [self._get_text_from_point(t) for t in result], next_id
+    
+    async def get_counts(self, exact: bool) -> int:
+        result = await self._qd.count(collection_name = self.collection_name,
+                                      exact=exact)
+        return result.count
+
+    async def check_collection(self) -> bool:
+        result = await self._qd.get_collections()
+        result = [t.name for t in result.collections]
+        return self.collection_name in result
+    
+    async def create_collection(self):
+        if await self.check_collection():
+            logging.warning("Collection already exists. Skip initialization.")
+            return
+        else:
+            await self._qd.create_collection(collection_name=self.collection_name,
+                                             vectors_config=models.VectorParams(size=768, 
+                                                                                distance=models.Distance.COSINE)) 
+    
