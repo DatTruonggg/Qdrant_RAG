@@ -19,6 +19,7 @@ class TextData(BaseModel):
     format: Optional[str] = None #maybe for s3 in AWS
     local: Optional[bool] = False
 
+    @computed_field()
     @property
     def payload(self):
         result = self.model_dump(exclude={"id", "index_date"})
